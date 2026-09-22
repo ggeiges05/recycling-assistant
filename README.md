@@ -80,3 +80,26 @@ for it.
 A future version could let users type a question and search for relevant
 guidance. However, it would still need a reliable source before providing
 instructions for an unfamiliar item.
+
+## Current Progress
+
+The terminal prototype loads the CSV and lets users select an item
+and its condition. It finds the matching row and displays the category,
+instructions, source, and verification status.
+
+I tested all three disposal categories and invalid menu entries.
+The tested selections returned the expected results, and invalid
+entries prompted the user to try again.
+
+This version uses direct CSV lookup. It does not use an AI model
+or RAG.
+
+## Running the Prototype
+
+Python 3 is required. No additional packages are needed.
+
+From the project folder, run:
+
+python app.py
+
+Select an item number, then a condition number, to see the guidance.
