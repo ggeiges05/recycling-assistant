@@ -54,3 +54,18 @@ follow-up question or explain that the item needs further checking.
 
 AI was used to help create the initial dataset and write this README.
 The data still needs review before it is used for real disposal advice.
+## Data Cleaning and Checks
+
+I removed the California comparison column from the working dataset
+and saved the file as CSV UTF-8.
+
+The dataset has 200 rows and six columns. I checked for missing values
+and duplicate item-condition pairs. Neither check found any issues.
+
+Category counts:
+- Recyclable: 84
+- Recyclable after preparation: 68
+- Not accepted in recycling: 48
+
+These checks confirm the dataset's structure. The disposal instructions
+still need to be verified against SAMI's waste collection rules.
