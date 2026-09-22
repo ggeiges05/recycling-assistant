@@ -69,3 +69,14 @@ Category counts:
 
 These checks confirm the dataset's structure. The disposal instructions
 still need to be verified against SAMI's waste collection rules.
+
+## Known Limitations
+
+The current prototype only works with items and conditions already
+listed in the dataset. Users must select from the available options.
+If an item is missing, the program cannot provide disposal instructions
+for it.
+
+A future version could let users type a question and search for relevant
+guidance. However, it would still need a reliable source before providing
+instructions for an unfamiliar item.
