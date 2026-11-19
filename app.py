@@ -10,36 +10,79 @@ print(f"Loaded {len(recycling_data)} recycling examples from Airtable.")
 if not recycling_data:
     raise SystemExit("No recycling records were found.")
 
-# Display the available items.
-items = sorted({row["Item"] for row in recycling_data})
+# Create an alphabetical list of unique item names.
+items = sorted({row["item"] for row in recycling_data})
 
-print("\nAvailable items:")
-for number, item in enumerate(items, start=1):
-    print(f"{number}. {item}")
-
-# Ask the user to select an item.
+# Keep searching until the user selects an item or quits.
 while True:
-    choice = input("\nEnter an item number: ").strip()
+    query = input(
+        "\nEnter an item name, or type 'quit' to exit: "
+    ).strip()
 
-    if choice.isdigit() and 1 <= int(choice) <= len(items):
-        selected_item = items[int(choice) - 1]
+    if query.casefold() == "quit":
+        raise SystemExit("Recycling Assistant closed.")
+
+    if not query:
+        print("Please enter an item name.")
+        continue
+
+    # Look for an exact name first, ignoring capitalization.
+    matching_items = []
+
+    for item in items:
+        if query.casefold() == item.casefold():
+            matching_items.append(item)
+
+    # Otherwise, search for the entered words.
+    if not matching_items:
+        search_words = query.casefold().split()
+
+        for item in items:
+            item_words = item.casefold().replace("-", " ").split()
+
+            if all(word in item_words for word in search_words):
+                matching_items.append(item)
+
+    if not matching_items:
+        print("No matching item was found in the database.")
+        print("Try a shorter name, such as 'can' or 'cardboard'.")
+        continue
+
+    print("\nMatching items:")
+
+    for number, item in enumerate(matching_items, start=1):
+        print(f"{number}. {item}")
+
+    while True:
+        choice = input(
+            "\nSelect an item number, or enter 0 to search again: "
+        ).strip()
+
+        if choice == "0":
+            break
+
+        if choice.isdigit() and 1 <= int(choice) <= len(matching_items):
+            selected_item = matching_items[int(choice) - 1]
+            break
+
+        print(f"Please enter a number from 0 to {len(matching_items)}.")
+
+    if choice != "0":
         break
 
-    print(f"Please enter a number between 1 and {len(items)}.")
-
-# Find the records for that item.
+# Find all condition records for the selected item.
 matches = [
     row for row in recycling_data
-    if row["Item"] == selected_item
+    if row["item"] == selected_item
 ]
 
 print(f"\nYou selected: {selected_item}")
 print("Available conditions:")
 
 for number, row in enumerate(matches, start=1):
-    print(f'{number}. {row["Condition"]}')
+    print(f'{number}. {row["condition"]}')
 
-# Select the condition and define selected_row.
+# Select a condition.
 while True:
     choice = input("\nEnter a condition number: ").strip()
 
@@ -49,16 +92,15 @@ while True:
 
     print(f"Please enter a number between 1 and {len(matches)}.")
 
-# Display the original database information.
+# Display the stored information.
 print("\nDisposal guidance:")
-print(f'Item: {selected_row["Item"]}')
-print(f'Condition: {selected_row["Condition"]}')
-print(f'Category: {selected_row["Category"]}')
-print(f'Instructions: {selected_row["Instructions"]}')
-print(f'Source: {selected_row["Source"]}')
-print(f'Verification status: {selected_row["VerificationStatus"]}')
+print(f'Item: {selected_row["item"]}')
+print(f'Condition: {selected_row["condition"]}')
+print(f'Category: {selected_row["category"]}')
+print(f'Instructions: {selected_row["instruction"]}')
+print(f'Source: {selected_row["source"]}')
 
-# Ask Gemini to explain the selected record.
+# Generate the AI explanation.
 print("\nAI explanation:")
 
 try:

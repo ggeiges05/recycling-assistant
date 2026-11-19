@@ -5,8 +5,9 @@ from urllib.parse import quote
 import requests
 from dotenv import load_dotenv
 
-"""Read every record from one Airtable table."""
+
 def read_table(table_name, base_id, headers):
+    """Read every page of records from an Airtable table."""
 
     encoded_name = quote(table_name, safe="")
     url = f"https://api.airtable.com/v0/{base_id}/{encoded_name}"
@@ -24,7 +25,8 @@ def read_table(table_name, base_id, headers):
 
         if response.status_code != 200:
             raise RuntimeError(
-                f"Could not read {table_name}: HTTP {response.status_code}"
+                f"Could not read {table_name}: "
+                f"HTTP {response.status_code}"
             )
 
         page = response.json()
@@ -33,97 +35,158 @@ def read_table(table_name, base_id, headers):
         next_page = page.get("offset")
 
         if not next_page:
-            break
+            return records
 
         params["offset"] = next_page
 
-    return records
+
+def resolve_value(value, linked_records, field_name):
+    """Accept text or convert linked record IDs into readable text."""
+
+    if isinstance(value, str):
+        return value.strip()
+
+    if isinstance(value, list):
+        values = []
+
+        for record_id in value:
+            if record_id not in linked_records:
+                raise ValueError(
+                    f"{field_name} has an unresolved link: {record_id}"
+                )
+
+            text = linked_records[record_id]
+
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(
+                    f"The linked {field_name} record has no readable value."
+                )
+
+            values.append(text.strip())
+
+        return "; ".join(values)
+
+    raise ValueError(
+        f"{field_name} must contain text or linked records."
+    )
 
 
-"""Load Airtable data into the format used by app.py."""
 def load_recycling_data():
+    """Load recycling records and resolve category and source links."""
 
-    # 1. Load credentials.
-    env_path = Path(__file__).parent / ".env"
-    load_dotenv(env_path)
+    load_dotenv(Path(__file__).parent / ".env")
 
     token = os.getenv("AIRTABLE_TOKEN")
     base_id = os.getenv("AIRTABLE_BASE_ID")
+    table_name = os.getenv("AIRTABLE_TABLE_NAME", "Recycling Items")
 
     if not token or not base_id:
         raise ValueError("Missing Airtable token or base ID in .env.")
 
     headers = {"Authorization": f"Bearer {token}"}
+    records = read_table(table_name, base_id, headers)
 
-    # 2. Match category record IDs to category names.
+    # Load linked tables only when the item records use links.
+    needs_categories = any(
+        isinstance(record["fields"].get("Category"), list)
+        for record in records
+    )
+
+    needs_sources = any(
+        isinstance(record["fields"].get("Source"), list)
+        for record in records
+    )
+
     categories = {}
 
-    for record in read_table("Categories", base_id, headers):
-        record_id = record["id"]
-        category_name = record["fields"]["Category Name"]
+    if needs_categories:
+        for record in read_table("Categories", base_id, headers):
+            categories[record["id"]] = record["fields"].get(
+                "Category Name", ""
+            )
 
-        categories[record_id] = category_name
-
-    # 3. Match source record IDs to website URLs.
     sources = {}
 
-    for record in read_table("Sources", base_id, headers):
-        record_id = record["id"]
-        website_url = record["fields"]["Website URL"]
+    if needs_sources:
+        for record in read_table("Sources", base_id, headers):
+            sources[record["id"]] = record["fields"].get(
+                "Website URL", ""
+            )
 
-        sources[record_id] = website_url
-
-    # 4. Read and prepare the recycling items.
     recycling_data = []
-    item_records = read_table("Recycling Items", base_id, headers)
 
-    for record in item_records:
+    for record in records:
         fields = record["fields"]
-        item_name = fields.get("Item", "")
+        record_id = record["id"]
 
-        category_ids = fields.get("Category", [])
-        source_ids = fields.get("Source", [])
+        category_value = fields.get("Category", "")
 
-        if len(category_ids) != 1:
-            raise ValueError(f"{item_name} must have exactly one category.")
-
-        if not source_ids:
-            raise ValueError(f"{item_name} has no source.")
-
-        category_id = category_ids[0]
-        category_name = categories[category_id]
-
-        source_urls = []
-
-        for source_id in source_ids:
-            website_url = sources[source_id]
-            source_urls.append(website_url)
+        if isinstance(category_value, list) and len(category_value) != 1:
+            raise ValueError(
+                f"Record {record_id} must have exactly one linked category."
+            )
 
         item = {
-            "Item": item_name,
-            "Condition": fields.get("Condition", ""),
-            "Category": category_name,
-            "Instructions": fields.get("Instructions", ""),
-            "Source": "; ".join(source_urls),
-            "VerificationStatus": fields.get("Verification Status", "")
+            "item": fields.get("Item", ""),
+            "aliases": fields.get("Aliases", ""),
+            "condition": fields.get("Condition", ""),
+            "category": resolve_value(
+                category_value, categories, "Category"
+            ),
+            "instruction": fields.get("Instructions", ""),
+            "source": resolve_value(
+                fields.get("Source", ""), sources, "Source"
+            )
         }
 
+        # Validate and clean the final readable values.
+        for field, value in item.items():
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"Record {record_id}: {field} must contain text."
+                )
+
+            item[field] = value.strip()
+
+        required_fields = (
+            "item",
+            "condition",
+            "category",
+            "instruction",
+            "source"
+        )
+
+        for field in required_fields:
+            if not item[field]:
+                raise ValueError(
+                    f"Record {record_id} is missing {field}."
+                )
+
         recycling_data.append(item)
+
+    if not recycling_data:
+        raise ValueError("No recycling records were found.")
 
     return recycling_data
 
 
-# Run this test only when this file is executed directly.
 if __name__ == "__main__":
     try:
         rows = load_recycling_data()
-    except (requests.RequestException, RuntimeError, ValueError, KeyError) as error:
+    except (
+        requests.RequestException,
+        RuntimeError,
+        ValueError,
+        KeyError
+    ) as error:
         raise SystemExit(f"Could not load Airtable data: {error}")
 
-    print(f"Loaded {len(rows)} recycling records from Airtable.")
+    unique_items = {row["item"].casefold() for row in rows}
 
-    for number, row in enumerate(rows, start=1):
-        print(f"\nRecord {number}:")
+    print(f"Loaded {len(rows)} condition records from Airtable.")
+    print(f"Found {len(unique_items)} unique items.")
 
-        for field, value in row.items():
-            print(f"{field}: {value}")
+    print("\nFirst record:")
+
+    for field, value in rows[0].items():
+        print(f"{field}: {value}")

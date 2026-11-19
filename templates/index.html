@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recycling Assistant</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 32px 16px;
+            background: #f3f6f4;
+            color: #20342c;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }
+
+        main {
+            max-width: 720px;
+            margin: auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        .card {
+            margin-top: 24px;
+            padding: 24px;
+            background: white;
+            border: 1px solid #d7e1db;
+            border-radius: 12px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input,
+        select,
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid #a7b9ad;
+            border-radius: 6px;
+            font: inherit;
+        }
+
+        button {
+            background: #226346;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .secondary {
+            background: #e9efeb;
+            color: #20342c;
+        }
+
+        .category {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: #e9efeb;
+            font-weight: bold;
+        }
+
+        #source {
+            overflow-wrap: anywhere;
+        }
+
+        #status {
+            min-height: 24px;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <h1>Recycling Assistant</h1>
+    <p>
+        Find disposal guidance for common household items.
+        Current guidance is for Normal, Illinois curbside recycling.
+    </p>
+
+    <section class="card">
+        <form id="search-form">
+            <label for="query">What are you trying to recycle?</label>
+            <input
+                id="query"
+                name="query"
+                placeholder="For example: soda can"
+                maxlength="150"
+                required
+            >
+            <button type="submit">Find my item</button>
+        </form>
+
+        <p id="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="matches-section" class="card" hidden>
+        <h2>Confirm your item</h2>
+
+        <label for="matches">Which item did you mean?</label>
+        <select id="matches"></select>
+
+        <button id="confirm-item" type="button">
+            Yes, use this item
+        </button>
+
+        <button id="search-again" type="button" class="secondary">
+            No, search again
+        </button>
+    </section>
+
+    <section id="conditions-section" class="card" hidden>
+        <h2>Check its condition</h2>
+
+        <label for="conditions">Which description fits?</label>
+        <select id="conditions"></select>
+
+        <button id="get-guidance" type="button">
+            Get disposal guidance
+        </button>
+    </section>
+
+    <section id="result" class="card" hidden>
+    <h2 id="result-item"></h2>
+
+    <p id="result-condition"></p>
+
+    <p id="explanation"></p>
+
+    <p id="category" class="category"></p>
+
+    <h3>Stored instructions</h3>
+    <p id="instruction"></p>
+
+    <h3>Sources</h3>
+    <p id="source"></p>
+
+    <p>
+        Not accepted in recycling does not automatically mean trash.
+        Special disposal may be required.
+    </p>
+    </section>  
+</main>
+
+<script>
+    const searchForm = document.getElementById("search-form");
+    const queryInput = document.getElementById("query");
+    const statusText = document.getElementById("status");
+
+    const matchesSection = document.getElementById("matches-section");
+    const matchesSelect = document.getElementById("matches");
+
+    const conditionsSection = document.getElementById("conditions-section");
+    const conditionsSelect = document.getElementById("conditions");
+
+    const resultSection = document.getElementById("result");
+
+    function setBusy(busy) {
+        document.querySelectorAll("input, select, button").forEach(control => {
+            control.disabled = busy;
+        });
+    }
+
+    async function requestData(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "The request failed.");
+        }
+
+        return data;
+    }
+
+    function resetResults() {
+        matchesSection.hidden = true;
+        conditionsSection.hidden = true;
+        resultSection.hidden = true;
+    }
+
+    searchForm.addEventListener("submit", async event => {
+        event.preventDefault();
+        resetResults();
+
+        const query = queryInput.value.trim();
+
+        if (!query) {
+            statusText.textContent = "Enter an item name.";
+            return;
+        }
+
+        setBusy(true);
+        statusText.textContent = "Searching recycling information...";
+
+        try {
+            const data = await requestData(
+                "/api/search?q=" + encodeURIComponent(query)
+            );
+
+            matchesSelect.replaceChildren();
+
+            if (data.matches.length === 0) {
+                statusText.textContent =
+                    "No matching item was found. Try another name.";
+                return;
+            }
+
+            for (const item of data.matches) {
+                matchesSelect.add(new Option(item, item));
+            }
+
+            matchesSection.hidden = false;
+            statusText.textContent = "Confirm the matching item below.";
+        } catch (error) {
+            statusText.textContent =
+                error.message || "Search is unavailable. Please try again.";
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    document.getElementById("search-again").addEventListener("click", () => {
+        resetResults();
+        statusText.textContent = "Try a different item name.";
+        queryInput.focus();
+    });
+
+    document.getElementById("confirm-item").addEventListener("click", async () => {
+        conditionsSection.hidden = true;
+        resultSection.hidden = true;
+        setBusy(true);
+        statusText.textContent = "Loading available conditions...";
+
+        try {
+            const data = await requestData(
+                "/api/conditions?item=" +
+                encodeURIComponent(matchesSelect.value)
+            );
+
+            conditionsSelect.replaceChildren();
+
+            for (const entry of data.conditions) {
+                conditionsSelect.add(
+                    new Option(entry.condition, entry.id)
+                );
+            }
+
+            conditionsSection.hidden = false;
+            statusText.textContent = "Choose the condition that fits.";
+        } catch (error) {
+            statusText.textContent = error.message;
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    document.getElementById("get-guidance").addEventListener("click", async () => {
+        resultSection.hidden = true;
+        setBusy(true);
+        statusText.textContent =
+            "Preparing guidance and the AI explanation...";
+
+        try {
+            const data = await requestData("/api/guidance", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    id: Number(conditionsSelect.value)
+                })
+            });
+
+            document.getElementById("result-item").textContent = data.item;
+            document.getElementById("result-condition").textContent =
+                "Condition: " + data.condition;
+            document.getElementById("category").textContent = data.category;
+            document.getElementById("instruction").textContent = data.instruction;
+            document.getElementById("explanation").textContent = data.explanation;
+            document.getElementById("source").textContent = data.source;
+
+            resultSection.hidden = false;
+
+            statusText.textContent = data.ai_available
+                ? "Your guidance is ready."
+                : "Stored guidance is ready. The AI explanation is unavailable.";
+
+            resultSection.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        } catch (error) {
+            statusText.textContent =
+                error.message || "Guidance is unavailable. Please try again.";
+        } finally {
+            setBusy(false);
+        }
+    });
+</script>
+</body>
+</html>
