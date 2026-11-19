@@ -16,12 +16,11 @@ def create_response(item):
 
     # Prepare the selected Airtable record.
     item_data = {
-        "Item": item["Item"],
-        "Condition": item["Condition"],
-        "Category": item["Category"],
-        "Instructions": item["Instructions"]
-    }
-
+    "item": item["item"],
+    "condition": item["condition"],
+    "category": item["category"],
+    "instruction": item["instruction"]
+}
     # Tell Gemini how to explain the record.
     instructions = (
         "Explain the supplied recycling record in one or two short, "
